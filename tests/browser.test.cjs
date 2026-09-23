@@ -11,7 +11,7 @@ const { createHash } = require('node:crypto');
 
 const baseURL = process.env.PICVERT_TEST_URL || 'http://127.0.0.1:8765/';
 const outputDir = path.resolve('test-results');
-const password = 'cobalt meadow canoe comet 27';
+const password = 'a1B2c3';
 
 function crc32(data) {
   let crc = 0xffffffff;
@@ -46,7 +46,7 @@ function fixture() {
 }
 async function saveDownload(page, name) {
   const pending = page.waitForEvent('download');
-  await page.locator('#download-link').click();
+  await page.locator('#download-button').click();
   const download = await pending;
   assert.equal(await download.failure(), null);
   const destination = path.join(outputDir, name);
@@ -64,22 +64,25 @@ async function saveDownload(page, name) {
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(baseURL);
-    assert.equal(await page.locator('#support-error').isVisible(), false);
+    assert.equal(await page.locator('input[type=text]').count(), 1);
+    assert.equal(await page.locator('button').count(), 3);
+    assert.equal(await page.locator('#confirm-password').count(), 0);
     assert.equal(await page.locator('#controls').isDisabled(), false);
     await page.screenshot({ path: path.join(outputDir, 'desktop-empty.png'), fullPage: true });
     const network = [];
     context.on('request', request => { if (/^https?:/.test(request.url())) network.push(request.url()); });
     await context.setOffline(true);
     await page.locator('#file-input').setInputFiles({ name: 'original-photo.png', mimeType: 'image/png', buffer: original });
-    await page.locator('#password').fill(password);
-    await page.locator('#confirm-password').fill('wrong confirmation');
-    await page.locator('#submit-button').click();
-    assert.match(await page.locator('#confirm-password').evaluate(element => element.validationMessage), /do not match/);
-    await page.locator('#confirm-password').fill(password);
-    await page.locator('#submit-button').click();
-    await page.locator('#download-link').waitFor({ state: 'visible' });
+    await page.locator('#passcode').fill('ABC1234');
+    await page.locator('#encrypt-button').click();
+    await page.waitForFunction(() => document.querySelector('#status').classList.contains('error'));
+    assert.match(await page.locator('#status').textContent(), /1.6 letters or numbers/);
+    await page.locator('#passcode').fill(password);
+    await page.locator('#encrypt-button').click();
+    await page.waitForFunction(() => !document.querySelector('#download-button').disabled);
     assert.match(await page.locator('#status').textContent(), /Encrypted/);
-    await page.waitForFunction(() => document.querySelector('#result-image').naturalWidth > 0);
+    assert.equal(await page.locator('#passcode').inputValue(), 'A1B2C3');
+    await page.waitForFunction(() => document.querySelector('#preview').naturalWidth > 0);
     const encrypted = await saveDownload(page, 'encrypted.png');
     assert.equal(encrypted.filename, 'picvert-encrypted.png');
     await page.screenshot({ path: path.join(outputDir, 'desktop-encrypted.png'), fullPage: true });
@@ -93,17 +96,15 @@ async function saveDownload(page, name) {
     const recipientNetwork = [];
     recipient.on('request', request => { if (/^https?:/.test(request.url())) recipientNetwork.push(request.url()); });
     await recipient.setOffline(true);
-    await friend.locator('#restore-mode').click();
     await friend.locator('#file-input').setInputFiles(encrypted.destination);
-    assert.equal(await friend.locator('#source-preview').isVisible(), false);
-    await friend.locator('#password').fill('the wrong password');
-    await friend.locator('#submit-button').click();
+    await friend.locator('#passcode').fill('WRONG1');
+    await friend.locator('#restore-button').click();
     await friend.waitForFunction(() => document.querySelector('#status').classList.contains('error'));
     assert.match(await friend.locator('#status').textContent(), /incorrect|damaged/);
-    assert.equal(await friend.locator('#download-link').isVisible(), false);
-    await friend.locator('#password').fill(password);
-    await friend.locator('#submit-button').click();
-    await friend.locator('#download-link').waitFor({ state: 'visible' });
+    assert.equal(await friend.locator('#download-button').isDisabled(), true);
+    await friend.locator('#passcode').fill(password.toLowerCase());
+    await friend.locator('#restore-button').click();
+    await friend.waitForFunction(() => !document.querySelector('#download-button').disabled);
     const restored = await saveDownload(friend, 'restored.png');
     assert.equal(restored.filename, 'original-photo.png');
     const restoredBytes = await fs.readFile(restored.destination);
@@ -114,14 +115,14 @@ async function saveDownload(page, name) {
 
     // Navigating away resets private state, including a page restored from the back/forward cache.
     await friend.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
-    assert.equal(await friend.locator('#download-link').isVisible(), false);
-    assert.equal(await friend.locator('#password').inputValue(), '');
-    assert.equal(await friend.locator('#submit-button').isDisabled(), true);
+    assert.equal(await friend.locator('#download-button').isDisabled(), true);
+    assert.equal(await friend.locator('#passcode').inputValue(), '');
+    assert.equal(await friend.locator('#encrypt-button').isDisabled(), true);
     await friend.locator('#file-input').setInputFiles({ name: 'ordinary.png', mimeType: 'image/png', buffer: original });
-    await friend.locator('#password').fill(password);
-    await friend.locator('#submit-button').click();
+    await friend.locator('#passcode').fill(password.toLowerCase());
+    await friend.locator('#restore-button').click();
     await friend.waitForFunction(() => document.querySelector('#status').classList.contains('error'));
-    assert.equal(await friend.locator('#download-link').isVisible(), false);
+    assert.equal(await friend.locator('#download-button').isDisabled(), true);
 
     const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, deviceScaleFactor: 2 });
     const small = await mobile.newPage();
@@ -129,17 +130,16 @@ async function saveDownload(page, name) {
     assert.equal(await small.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await small.screenshot({ path: path.join(outputDir, 'mobile.png'), fullPage: true });
     // Narrow-screen restore works with the same saved carrier and original password.
-    await small.locator('#restore-mode').click();
     await small.locator('#file-input').setInputFiles(encrypted.destination);
-    await small.locator('#password').fill(password);
-    await small.locator('#submit-button').click();
-    await small.locator('#download-link').waitFor({ state: 'visible' });
+    await small.locator('#passcode').fill(password);
+    await small.locator('#restore-button').click();
+    await small.waitForFunction(() => !document.querySelector('#download-button').disabled);
     assert.equal(await small.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
     await small.screenshot({ path: path.join(outputDir, 'mobile-restored.png'), fullPage: true });
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ status: 'passed', browser: await browser.version(), originalBytes: original.length,
       sha256: createHash('sha256').update(restoredBytes).digest('hex'),
-      checks: ['password confirmation', 'offline encryption and PNG download', 'independent recipient context', 'wrong password rejection', 'exact original download with metadata', 'no HTTP requests during processing', 'no browser storage', 'pagehide state reset', 'ordinary PNG rejection', '390px mobile restore'],
+      checks: ['single code field and three buttons', '1–6 alphanumeric code validation', 'case-insensitive six-character code', 'offline encryption and PNG download', 'independent recipient context', 'wrong password rejection', 'exact original download with metadata', 'no HTTP requests during processing', 'no browser storage', 'pagehide state reset', 'ordinary PNG rejection', '390px mobile restore'],
       screenshots: outputDir }, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

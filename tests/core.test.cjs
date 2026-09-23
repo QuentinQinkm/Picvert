@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
 const { deflateSync, inflateSync } = require('node:zlib');
 const core = require('../core.js');
-const password = 'violet canoe lantern 42';
+const password = 'aB12cD';
 const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 // This independent PNG writer/reader uses Node zlib, not the browser codec.
@@ -101,17 +101,37 @@ test('actual PNG image recovers byte for byte, including its filename and type',
   assert.equal(recovered.type, 'image/png');
 });
 
-test('random binary bytes and Unicode filename/password survive the complete PNG pipeline', async () => {
+test('random binary bytes and Unicode filename survive the complete PNG pipeline', async () => {
   const original = randomBytes(250123);
-  const unicodePassword = '雪山の🌲 violet canoe!';
-  const carrier = await core.encryptFile(file(original, '旅行🌅与家人.heic', 'image/heic'), unicodePassword);
-  const recovered = await core.decryptImage(carrier, unicodePassword);
+  const carrier = await core.encryptFile(file(original, '旅行🌅与家人.heic', 'image/heic'), password);
+  const recovered = await core.decryptImage(carrier, password);
   assert.deepEqual(Buffer.from(recovered.bytes), original);
   assert.equal(recovered.name, '旅行🌅与家人.heic');
   assert.equal(recovered.type, 'image/heic');
   const raw = (await readCarrier(carrier)).pixels;
   assert.equal(raw.includes(Buffer.from('旅行')), false, 'filename is encrypted');
   assert.equal(raw.includes(Buffer.from('image/heic')), false, 'MIME type is encrypted');
+});
+
+test('one- and six-character passcodes accept letters and numbers regardless of case', async () => {
+  const original = Buffer.from('short passcode image bytes');
+  for (const [chosen, entered] of [['x', 'X'], ['Z', 'z'], ['0', '0'], ['a1B2c3', 'A1b2C3']]) {
+    const carrier = await core.encryptFile(file(original), chosen);
+    const recovered = await core.decryptImage(carrier, entered);
+    assert.deepEqual(Buffer.from(recovered.bytes), original);
+  }
+});
+
+test('existing v1 image restores with its original case-sensitive Unicode password', async () => {
+  // Created with the original 12-character-minimum core before short codes were added.
+  const legacyPassword = 'Legacy MixedCase 雪山!';
+  const original = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSioAAAAASUVORK5CYII=', 'base64');
+  const carrier = new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAFCAIAAADDivseAAABAElEQVR4nAH1AAr/AFBJQ1ZFUlQAAQEAQAAJJ8AAAACwUePeo0gINc9KlL/kIOAAlIUqTMAGfXZ+IYrvagAAAAAQAAAABQAAAAAAAAAAA0cp7u+xWlZCm3VN4ToQ+kIzjLi+fsemc5WumS0jVykAdXN64By0i8f/V2Ks35kVrVoxU7TuIWRFsb3ygSMX5I0bw/QETvdf3iR9sO0JVPl7AFSzhmX61ejC1YK0uxKQ2pmydaCCefYQxaAGA7YyvlzqNhJfMWhX993hks7C+gsNkQB1E7cGz79QuRUWZEAWWk2MJBgOgnn6u0RxZvndRyaI1bP/EltIut4yrE6v3b7CaTMNaGqTvmoyfAAAAABJRU5ErkJggg==', 'base64')]);
+  const recovered = await core.decryptImage(carrier, legacyPassword);
+  assert.deepEqual(Buffer.from(recovered.bytes), original);
+  assert.equal(recovered.name, 'legacy 雪.png');
+  assert.equal(recovered.type, 'image/png');
+  await assert.rejects(core.decryptImage(carrier, legacyPassword.toUpperCase()), hasCode('DECRYPT_FAILED'));
 });
 
 test('same image/password produces a different salt, IV, and ciphertext on every encryption', async () => {
@@ -190,8 +210,13 @@ test('PNG CRC errors, malformed lengths, trailing data, ordinary images, and inv
 
 test('password and metadata boundaries reject active file types, path names, and overlong strings', async () => {
   const input = file(randomBytes(10));
-  await assert.rejects(core.encryptFile(input, 'short'), hasCode('PASSWORD_TOO_SHORT'));
-  await assert.rejects(core.encryptFile(input, '🦊'.repeat(257)), hasCode('PASSWORD_TOO_LONG'));
+  for (const invalid of ['', '1234567', 'with space', 'abc!', '雪山', 'é', 'abc\n', null, 123456]) {
+    await assert.rejects(core.encryptFile(input, invalid), error => {
+      assert.equal(error.message, 'Use 1–6 letters or numbers.');
+      return hasCode('INVALID_PASSCODE')(error);
+    });
+  }
+  await assert.rejects(core.decryptImage(input, '🦊'.repeat(257)), hasCode('PASSWORD_TOO_LONG'));
   await assert.rejects(core.decryptImage(input, ''), hasCode('PASSWORD_REQUIRED'));
   await assert.rejects(core.encryptFile(file('svg', 'image.svg', 'image/svg+xml'), password), hasCode('UNSUPPORTED_FILE'));
   await assert.rejects(core.encryptFile(file('<html>', 'image.png', 'text/html'), password), hasCode('UNSUPPORTED_FILE'));

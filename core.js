@@ -7,7 +7,8 @@
 
   const MAX_FILE_BYTES = 20 * 1024 * 1024;
   const MAX_CARRIER_BYTES = 22 * 1024 * 1024;
-  const MIN_PASSWORD_LENGTH = 12;
+  const MIN_PASSWORD_LENGTH = 1;
+  const MAX_PASSCODE_LENGTH = 6;
   const MAX_PASSWORD_BYTES = 1024;
   const MAX_NAME_BYTES = 1024;
   const MAX_METADATA_BYTES = 4096;
@@ -43,13 +44,15 @@
     if (!isSupported()) fail('UNSUPPORTED_BROWSER', 'This browser needs Web Crypto and Compression Streams. Use a current browser over HTTPS or localhost.');
   }
   function passwordBytes(password, encrypting) {
-    if (typeof password !== 'string' || password.length === 0) fail('PASSWORD_REQUIRED', 'Enter the password.');
+    const isPasscode = typeof password === 'string' && password.length >= MIN_PASSWORD_LENGTH &&
+      password.length <= MAX_PASSCODE_LENGTH && !/[^a-z0-9]/i.test(password);
+    if (encrypting && !isPasscode) fail('INVALID_PASSCODE', 'Use 1–6 letters or numbers.');
+    if (typeof password !== 'string' || password.length === 0) fail('PASSWORD_REQUIRED', 'Enter the passcode.');
     if (password.length > MAX_PASSWORD_BYTES) fail('PASSWORD_TOO_LONG', 'The password must fit within 1,024 UTF-8 bytes.');
-    const bytes = encoder.encode(password);
+    // Earlier v1 outputs required at least 12 characters. Keep those passwords
+    // verbatim; only the new short alphanumeric passcodes ignore letter case.
+    const bytes = encoder.encode(isPasscode ? password.toUpperCase() : password);
     if (bytes.length > MAX_PASSWORD_BYTES) fail('PASSWORD_TOO_LONG', 'The password must fit within 1,024 UTF-8 bytes.');
-    if (encrypting && Array.from(password).length < MIN_PASSWORD_LENGTH) {
-      fail('PASSWORD_TOO_SHORT', 'Use at least 12 characters. A long, unique passphrase is best.');
-    }
     return bytes;
   }
   function fileMetadata(name, type) {
@@ -328,7 +331,7 @@
   }
 
   const api = Object.freeze({ encryptFile, decryptImage, isSupported, PicvertError, MAX_FILE_BYTES, MAX_CARRIER_BYTES,
-    MIN_PASSWORD_LENGTH, MAX_PASSWORD_BYTES, SUPPORTED_EXTENSIONS: Object.freeze(Object.keys(EXTENSION_TYPES)) });
+    MIN_PASSWORD_LENGTH, MAX_PASSCODE_LENGTH, MAX_PASSWORD_BYTES, SUPPORTED_EXTENSIONS: Object.freeze(Object.keys(EXTENSION_TYPES)) });
   root.PicvertCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(globalThis);
