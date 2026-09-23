@@ -2,13 +2,15 @@
 
 Encrypt an image into a noise-like PNG, share it, and restore the exact original image with the same password. Picvert runs in your browser. GitHub Pages serves the app’s static files; Picvert does not upload your images or passwords.
 
+**[Open Picvert](https://quentinqinkm.github.io/Picvert/)**
+
 ## Use it
 
-1. Open Picvert and choose **Encrypt**.
+1. Open Picvert and choose **Encrypt an image**.
 2. Select an image and enter a password. Use a unique passphrase made from at least four randomly chosen words.
 3. Download the encrypted PNG.
 4. Send that PNG to your friend **as a file or document**, keeping the original file intact. Give them the password separately through a trusted channel.
-5. Your friend opens Picvert, chooses **Restore**, selects the encrypted PNG, and enters the same password.
+5. Your friend opens Picvert, chooses **Restore an image**, selects the encrypted PNG, and enters the same password.
 6. Download the restored original image.
 
 Keep the original until you have checked that restoration works. There is no password reset or recovery key.
@@ -44,11 +46,19 @@ python3 -m http.server 8080
 
 Open [localhost:8080](http://localhost:8080). No install or build step is required.
 
-Run the core tests with Node.js:
+Run the core tests with Node.js 22 or newer:
 
 ```sh
 node --test tests/core.test.cjs
 ```
+
+The optional browser integration test requires Playwright with Chromium and a running static server. It uses synthetic images, separate sender/recipient browser sessions, and offline processing:
+
+```sh
+PICVERT_TEST_URL=http://localhost:8080 node tests/browser.test.cjs
+```
+
+It saves temporary downloads and desktop/mobile screenshots in the ignored `test-results/` directory.
 
 ## Host on GitHub Pages
 
