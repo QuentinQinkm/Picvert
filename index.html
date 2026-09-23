@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'none'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="Encrypt an image with a password, share the encrypted PNG, and restore the original in your browser. Your files stay on your device.">
+  <meta name="theme-color" content="#f3f6fa">
+  <title>Picvert — Private images, locally</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script src="core.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="Picvert home"><img src="favicon.svg" alt="" width="30" height="30">Picvert</a>
+    <span class="local-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>On your device</span>
+  </header>
+  <main>
+    <div class="intro">
+      <p class="eyebrow">A little privacy. In a picture.</p>
+      <h1>Your image. Your password.</h1>
+      <p>Turn an image into an encrypted PNG.<br class="desktop-break"> Only someone with your password can restore it.</p>
+    </div>
+    <noscript><p class="notice error">Picvert needs JavaScript to encrypt and restore images locally. Enable it in your browser to continue.</p></noscript>
+    <p id="support-error" class="notice error" role="alert" hidden></p>
+    <section class="workspace" aria-label="Image encryption tool">
+      <div class="editor">
+        <div class="mode-switch" role="group" aria-label="Choose an action">
+          <button type="button" id="encrypt-mode" aria-pressed="true">Encrypt an image</button>
+          <button type="button" id="restore-mode" aria-pressed="false">Restore an image</button>
+        </div>
+        <form id="image-form" autocomplete="off">
+          <fieldset id="controls">
+            <legend class="sr-only">Image and password</legend>
+            <div class="step-label"><span>01</span><label for="file-input" id="file-label">Choose your image</label></div>
+            <div class="drop-zone" id="drop-zone">
+              <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.avif,.heic,.heif,.bmp,.tif,.tiff,.ico" aria-describedby="file-help file-detail">
+              <div id="drop-empty">
+                <svg class="upload-icon" width="36" height="36" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="4" y="4" width="24" height="24" rx="5"/><circle cx="12" cy="12" r="2.5"/><path d="m5 24 8-8 5 5 4-4 5 5"/></svg>
+                <strong id="choose-copy">Choose an image</strong><span>or drop it here</span>
+              </div>
+              <div id="selected-file" hidden>
+                <img id="source-preview" alt="Selected image preview" hidden>
+                <div><strong id="selected-name"></strong><span id="selected-size"></span><span class="change-copy">Choose a different image</span></div>
+              </div>
+            </div>
+            <p class="field-help" id="file-help">PNG, JPG, WebP, HEIC and other image formats. Up to 20 MiB.</p>
+            <p id="file-detail" class="sr-only" aria-live="polite"></p>
+            <div class="step-label password-step"><span>02</span><label for="password" id="password-label">Create a password</label></div>
+            <div class="password-wrap">
+              <input id="password" type="password" autocomplete="new-password" placeholder="Enter your password" required minlength="12" maxlength="1024" aria-describedby="password-help" spellcheck="false" autocapitalize="none">
+              <button type="button" id="show-password" aria-label="Show password" aria-pressed="false">Show</button>
+            </div>
+            <p class="field-help" id="password-help">At least 12 characters. Try four or more randomly chosen words.</p>
+            <div id="confirm-wrap">
+              <label class="confirm-label" for="confirm-password">Confirm password</label>
+              <input id="confirm-password" type="password" autocomplete="new-password" placeholder="Enter it again" required maxlength="1024" spellcheck="false" autocapitalize="none">
+            </div>
+            <button class="primary-button" id="submit-button" type="submit" disabled>Encrypt image</button>
+          </fieldset>
+        </form>
+        <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true"></p>
+        <button id="clear-button" class="text-button" type="button" hidden>Clear image and password</button>
+      </div>
+      <aside class="result-panel" aria-label="Your result">
+        <div class="result-heading"><span class="eyebrow">YOUR RESULT</span><span id="result-tag" class="result-tag" hidden></span></div>
+        <div id="result-empty" class="result-empty">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true"><rect x="8" y="8" width="20" height="20" rx="3" fill="currentColor" opacity=".25"/><rect x="36" y="8" width="20" height="20" rx="3" fill="currentColor" opacity=".6"/><rect x="8" y="36" width="20" height="20" rx="3" fill="currentColor" opacity=".6"/><rect x="36" y="36" width="20" height="20" rx="3" fill="currentColor" opacity=".25"/></svg>
+          <h2 id="empty-title">A picture with a secret.</h2>
+          <p id="empty-description">Your encrypted image will appear here,<br>ready to download and share.</p>
+        </div>
+        <div id="result-ready" class="result-ready" hidden>
+          <div class="result-image-wrap"><img id="result-image" alt="" hidden><p id="preview-unavailable" hidden>Preview unavailable in this browser.<br>Your original file is ready to download.</p></div>
+          <h2 id="result-title"></h2><p id="result-info"></p>
+          <a id="download-link" class="download-button">Download encrypted PNG</a>
+        </div>
+        <p id="result-hint" class="result-hint">The image and password stay in this browser.</p>
+      </aside>
+    </section>
+    <div class="aftercare">
+      <div><h2>Share the file. Keep the password safe.</h2><p>Send the downloaded PNG as a <strong>file or document</strong>. Resizing, compression or screenshots can make it unreadable. Give your friend the password through a separate, trusted channel.</p></div>
+      <div><h2>They open Picvert to restore it.</h2><p>Your friend chooses <strong>Restore an image</strong>, selects the PNG and enters the password. The original file is recovered exactly. A forgotten password cannot be reset.</p></div>
+    </div>
+    <details class="privacy-details">
+      <summary>What stays private?</summary>
+      <div>
+        <p>Images and passwords are processed on your device. This app has no upload server, analytics, accounts or browser storage. GitHub serves the page and may log your visit; it does not receive your selected image or password from this app.</p>
+        <p>Picvert uses your browser’s AES-256-GCM encryption with a password-derived key. Use a strong, unique password: someone with the encrypted file can attempt password guesses offline. The file size is visible. The restored file includes its original metadata, such as any location information.</p>
+        <p>This is an unaudited tool. Its protection depends on your password, your device and the code delivered by this page. Images from the old six-character scrambling prototype are not compatible.</p>
+        <p><a href="https://github.com/QuentinQinkm/Picvert" target="_blank" rel="noopener noreferrer">Read the source on GitHub</a></p>
+      </div>
+    </details>
+  </main>
+  <footer><span>Picvert</span><span>No accounts. No uploads. Just your browser.</span></footer>
+</body>
+</html>
